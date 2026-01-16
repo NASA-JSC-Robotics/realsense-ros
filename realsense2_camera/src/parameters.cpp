@@ -28,6 +28,10 @@ void BaseRealSenseNode::getParameters()
     _camera_name = _parameters->setParam<std::string>(param_name, "camera");
     _parameters_names.push_back(param_name);
 
+    param_name = std::string("is_polled");
+    _is_polled = _parameters->setParam<bool>(param_name, false);
+    _parameters_names.push_back(param_name);
+
     param_name = std::string("publish_tf");
     _publish_tf = _parameters->setParam<bool>(param_name, PUBLISH_TF);
     _parameters_names.push_back(param_name);
@@ -158,6 +162,12 @@ void BaseRealSenseNode::setDynamicParams()
                                          "re-enable either gyro or accel stream.");
                             }, crnt_descriptor);
     _parameters_names.push_back(param_name);
+
+    param_name = std::string("is_polled");
+    _parameters->setParam<bool>(param_name, false, [this](const rclcpp::Parameter& parameter) {_is_polled = parameter.get_value<bool>();});
+    _parameters_names.push_back(param_name);
+
+
 }
 
 void BaseRealSenseNode::clearParameters()

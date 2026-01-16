@@ -120,6 +120,8 @@ BaseRealSenseNode::BaseRealSenseNode(RosNodeBase& node,
     _is_accel_enabled(false),
     _is_gyro_enabled(false),
     _pointcloud(false),
+                                                               _is_polled(false),
+                                                               _frame_requested(false),
     _imu_sync_method(imu_sync_method::NONE),
     _is_profile_changed(false),
     _is_align_depth_changed(false),
@@ -560,160 +562,165 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
         ROS_DEBUG("Publish %s stream", ros_stream_to_string(frame.get_profile().stream_type()).c_str());
     }
     publishMetadata(frame, t, OPTICAL_FRAME_ID(stream_index));
+
 }
 
 
 void BaseRealSenseNode::frame_callback(rs2::frame frame)
 {
-    if (_synced_imu_publisher)
-        _synced_imu_publisher->Pause();
-    double frame_time = frame.get_timestamp();
-
-    // We compute a ROS timestamp which is based on an initial ROS time at point of first frame,
-    // and the incremental timestamp from the camera.
-    // In sync mode the timestamp is based on ROS time
-    bool placeholder_false(false);
-    if (_is_initialized_time_base.compare_exchange_strong(placeholder_false, true) )
+    //getParameters();
+    if (!_is_polled || _frame_requested)
     {
-        _is_initialized_time_base = setBaseTime(frame_time, frame.get_frame_timestamp_domain());
-    }
+        if (_synced_imu_publisher)
+            _synced_imu_publisher->Pause();
+        double frame_time = frame.get_timestamp();
 
-    rclcpp::Time t(frameSystemTimeSec(frame));
-    if (frame.is<rs2::frameset>())
-    {
-        ROS_DEBUG("Frameset arrived.");
-        auto frameset = frame.as<rs2::frameset>();
-        ROS_DEBUG("List of frameset before applying filters: size: %d", static_cast<int>(frameset.size()));
-        for (auto it = frameset.begin(); it != frameset.end(); ++it)
+        // We compute a ROS timestamp which is based on an initial ROS time at point of first frame,
+        // and the incremental timestamp from the camera.
+        // In sync mode the timestamp is based on ROS time
+        bool placeholder_false(false);
+        if (_is_initialized_time_base.compare_exchange_strong(placeholder_false, true) )
         {
-            auto f = (*it);
-            auto stream_type = f.get_profile().stream_type();
-            auto stream_index = f.get_profile().stream_index();
-            auto stream_format = f.get_profile().format();
-            auto stream_unique_id = f.get_profile().unique_id();
-
-            ROS_DEBUG("Frameset contain (%s, %d, %s %d) frame. frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
-                        rs2_stream_to_string(stream_type), stream_index, rs2_format_to_string(stream_format), stream_unique_id, frame.get_frame_number(), frame_time, t.nanoseconds());
-        }
-        // Clip depth_frame for max range:
-        rs2::depth_frame original_depth_frame = frameset.get_depth_frame();
-        if (original_depth_frame && _clipping_distance > 0)
-        {
-            clip_depth(original_depth_frame, _clipping_distance);
+            _is_initialized_time_base = setBaseTime(frame_time, frame.get_frame_timestamp_domain());
         }
 
-        rs2::video_frame original_color_frame = frameset.get_color_frame();
-        rs2::video_frame original_infra2_frame = frameset.get_infrared_frame(2);
-
-        ROS_DEBUG("num_filters: %d", static_cast<int>(_filters.size()));
-        for (auto filter_it : _filters)
+        rclcpp::Time t(frameSystemTimeSec(frame));
+        if (frame.is<rs2::frameset>())
         {
-            frameset = filter_it->Process(frameset);
+            ROS_DEBUG("Frameset arrived.");
+            auto frameset = frame.as<rs2::frameset>();
+            ROS_DEBUG("List of frameset before applying filters: size: %d", static_cast<int>(frameset.size()));
+            for (auto it = frameset.begin(); it != frameset.end(); ++it)
+            {
+                auto f = (*it);
+                auto stream_type = f.get_profile().stream_type();
+                auto stream_index = f.get_profile().stream_index();
+                auto stream_format = f.get_profile().format();
+                auto stream_unique_id = f.get_profile().unique_id();
+
+                ROS_DEBUG("Frameset contain (%s, %d, %s %d) frame. frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
+                            rs2_stream_to_string(stream_type), stream_index, rs2_format_to_string(stream_format), stream_unique_id, frame.get_frame_number(), frame_time, t.nanoseconds());
+            }
+            // Clip depth_frame for max range:
+            rs2::depth_frame original_depth_frame = frameset.get_depth_frame();
+            if (original_depth_frame && _clipping_distance > 0)
+            {
+                clip_depth(original_depth_frame, _clipping_distance);
+            }
+
+            rs2::video_frame original_color_frame = frameset.get_color_frame();
+            rs2::video_frame original_infra2_frame = frameset.get_infrared_frame(2);
+
+            ROS_DEBUG("num_filters: %d", static_cast<int>(_filters.size()));
+            for (auto filter_it : _filters)
+            {
+                frameset = filter_it->Process(frameset);
+            }
+
+            ROS_DEBUG("List of frameset after applying filters: size: %d", static_cast<int>(frameset.size()));
+            bool sent_depth_frame(false);
+            for (auto it = frameset.begin(); it != frameset.end(); ++it)
+            {
+                auto f = (*it);
+                auto stream_type = f.get_profile().stream_type();
+                auto stream_index = f.get_profile().stream_index();
+                auto stream_format = f.get_profile().format();
+                stream_index_pair sip{stream_type,stream_index};
+
+                ROS_DEBUG("Frameset contain (%s, %d, %s) frame. frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu", 
+                    rs2_stream_to_string(stream_type), stream_index, rs2_format_to_string(stream_format), f.get_frame_number(), frame_time, t.nanoseconds());
+                if (f.is<rs2::video_frame>())
+                    ROS_DEBUG_STREAM("frame: " << f.as<rs2::video_frame>().get_width() << " x " << f.as<rs2::video_frame>().get_height());
+
+                if (f.is<rs2::labeled_points>())
+                {
+                    publishLabeledPointCloud(f.as<rs2::labeled_points>(), t);
+                    publishMetadata(f, t, OPTICAL_FRAME_ID(sip));
+                }
+                else if (f.is<rs2::points>())
+                {
+                    publishPointCloud(f.as<rs2::points>(), t, frameset);
+                }
+                else if(stream_type == RS2_STREAM_OCCUPANCY)
+                {
+                    publishOccupancyFrame(f, t);
+                }
+                else
+                {
+                    if (stream_type == RS2_STREAM_DEPTH)
+                    {
+                        if (sent_depth_frame) continue;
+                        sent_depth_frame = true;
+                        if (original_color_frame && _align_depth_filter->is_enabled())
+                        {
+                            publishFrame(f, t, COLOR, _depth_aligned_image, _depth_aligned_info_publisher, _depth_aligned_image_publishers, false);
+                            continue;
+                        }
+                        if (original_infra2_frame && _align_depth_filter->is_enabled())
+                        {
+                            publishFrame(f, t, INFRA2, _depth_aligned_image, _depth_aligned_info_publisher, _depth_aligned_image_publishers, false);
+                            continue;
+                        }
+                    }
+                    publishFrame(f, t, sip, _images, _info_publishers, _image_publishers);
+                }
+            }
+            if (original_depth_frame && _align_depth_filter->is_enabled())
+            {
+                rs2::frame frame_to_send;
+                if (_colorizer_filter->is_enabled())
+                    frame_to_send = _colorizer_filter->Process(original_depth_frame);
+                else
+                    frame_to_send = original_depth_frame;
+                publishFrame(frame_to_send, t, DEPTH, _images, _info_publishers, _image_publishers);
+
+                // Publish RGBD only if rgbd enabled and both depth and color frames exist.
+                // On this line we already know original_depth_frame is valid.
+                if(_enable_rgbd && original_color_frame)
+                {
+                    auto color_format = original_color_frame.get_profile().format();
+                    auto depth_format = original_depth_frame.get_profile().format();
+                    publishRGBD(_images[COLOR], color_format, _depth_aligned_image[COLOR], depth_format, t);
+                }  
+            }
         }
-
-        ROS_DEBUG("List of frameset after applying filters: size: %d", static_cast<int>(frameset.size()));
-        bool sent_depth_frame(false);
-        for (auto it = frameset.begin(); it != frameset.end(); ++it)
+        else if (frame.is<rs2::video_frame>())
         {
-            auto f = (*it);
-            auto stream_type = f.get_profile().stream_type();
-            auto stream_index = f.get_profile().stream_index();
-            auto stream_format = f.get_profile().format();
+            auto stream_type = frame.get_profile().stream_type();
+            auto stream_index = frame.get_profile().stream_index();
+            ROS_DEBUG("Single video frame arrived (%s, %d). frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
+                        rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame_time, t.nanoseconds());
+                
             stream_index_pair sip{stream_type,stream_index};
-
-            ROS_DEBUG("Frameset contain (%s, %d, %s) frame. frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu", 
-                rs2_stream_to_string(stream_type), stream_index, rs2_format_to_string(stream_format), f.get_frame_number(), frame_time, t.nanoseconds());
-            if (f.is<rs2::video_frame>())
-                ROS_DEBUG_STREAM("frame: " << f.as<rs2::video_frame>().get_width() << " x " << f.as<rs2::video_frame>().get_height());
-
-            if (f.is<rs2::labeled_points>())
+            if(stream_type == RS2_STREAM_OCCUPANCY)
             {
-                publishLabeledPointCloud(f.as<rs2::labeled_points>(), t);
-                publishMetadata(f, t, OPTICAL_FRAME_ID(sip));
+                publishOccupancyFrame(frame, t);
             }
-            else if (f.is<rs2::points>())
+            else 
             {
-                publishPointCloud(f.as<rs2::points>(), t, frameset);
-            }
-            else if(stream_type == RS2_STREAM_OCCUPANCY)
-            {
-                publishOccupancyFrame(f, t);
-            }
-            else
-            {
-                if (stream_type == RS2_STREAM_DEPTH)
+                if (frame.is<rs2::depth_frame>())
                 {
-                    if (sent_depth_frame) continue;
-                    sent_depth_frame = true;
-                    if (original_color_frame && _align_depth_filter->is_enabled())
+                    if (_clipping_distance > 0)
                     {
-                        publishFrame(f, t, COLOR, _depth_aligned_image, _depth_aligned_info_publisher, _depth_aligned_image_publishers, false);
-                        continue;
-                    }
-                    if (original_infra2_frame && _align_depth_filter->is_enabled())
-                    {
-                        publishFrame(f, t, INFRA2, _depth_aligned_image, _depth_aligned_info_publisher, _depth_aligned_image_publishers, false);
-                        continue;
+                        clip_depth(frame, _clipping_distance);
                     }
                 }
-                publishFrame(f, t, sip, _images, _info_publishers, _image_publishers);
+                publishFrame(frame, t, sip, _images, _info_publishers, _image_publishers);
             }
         }
-        if (original_depth_frame && _align_depth_filter->is_enabled())
+        else if (frame.is<rs2::labeled_points>())
         {
-            rs2::frame frame_to_send;
-            if (_colorizer_filter->is_enabled())
-                frame_to_send = _colorizer_filter->Process(original_depth_frame);
-            else
-                frame_to_send = original_depth_frame;
-            publishFrame(frame_to_send, t, DEPTH, _images, _info_publishers, _image_publishers);
-
-            // Publish RGBD only if rgbd enabled and both depth and color frames exist.
-            // On this line we already know original_depth_frame is valid.
-            if(_enable_rgbd && original_color_frame)
-            {
-                auto color_format = original_color_frame.get_profile().format();
-                auto depth_format = original_depth_frame.get_profile().format();
-                publishRGBD(_images[COLOR], color_format, _depth_aligned_image[COLOR], depth_format, t);
-            }  
+            auto stream_type = frame.get_profile().stream_type();
+            auto stream_index = frame.get_profile().stream_index();
+            stream_index_pair sip{stream_type,stream_index};
+            ROS_DEBUG("Single labeled point cloud frame arrived (%s, %d). frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
+                        rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame_time, t.nanoseconds());
+            publishLabeledPointCloud(frame.as<rs2::labeled_points>(), t);
+            publishMetadata(frame, t, OPTICAL_FRAME_ID(sip));
         }
+        if (_synced_imu_publisher)
+            _synced_imu_publisher->Resume();
     }
-    else if (frame.is<rs2::video_frame>())
-    {
-        auto stream_type = frame.get_profile().stream_type();
-        auto stream_index = frame.get_profile().stream_index();
-        ROS_DEBUG("Single video frame arrived (%s, %d). frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
-                    rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame_time, t.nanoseconds());
-            
-        stream_index_pair sip{stream_type,stream_index};
-        if(stream_type == RS2_STREAM_OCCUPANCY)
-        {
-            publishOccupancyFrame(frame, t);
-        }
-        else 
-        {
-            if (frame.is<rs2::depth_frame>())
-            {
-                if (_clipping_distance > 0)
-                {
-                    clip_depth(frame, _clipping_distance);
-                }
-            }
-            publishFrame(frame, t, sip, _images, _info_publishers, _image_publishers);
-        }
-    }
-    else if (frame.is<rs2::labeled_points>())
-    {
-        auto stream_type = frame.get_profile().stream_type();
-        auto stream_index = frame.get_profile().stream_index();
-        stream_index_pair sip{stream_type,stream_index};
-        ROS_DEBUG("Single labeled point cloud frame arrived (%s, %d). frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
-                    rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame_time, t.nanoseconds());
-        publishLabeledPointCloud(frame.as<rs2::labeled_points>(), t);
-        publishMetadata(frame, t, OPTICAL_FRAME_ID(sip));
-    }
-    if (_synced_imu_publisher)
-        _synced_imu_publisher->Resume();
 } // frame_callback
 
 void BaseRealSenseNode::multiple_message_callback(rs2::frame frame, imu_sync_method sync_method)
