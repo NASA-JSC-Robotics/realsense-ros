@@ -164,7 +164,7 @@ void BaseRealSenseNode::setDynamicParams()
     _parameters_names.push_back(param_name);
 
     param_name = std::string("is_polled");
-    _parameters->setParam<bool>(param_name, false, [this](const rclcpp::Parameter& parameter) {_is_polled = parameter.get_value<bool>();});
+    _parameters->setParam<bool>(param_name, false, [this](const rclcpp::Parameter& parameter) {_is_polled = parameter.get_value<bool>(); if(_is_polled) {_sync_frames = true;} else {_sync_frames = _parameters->getParam<bool>("enable_sync");}});
     _parameters_names.push_back(param_name);
 
 
