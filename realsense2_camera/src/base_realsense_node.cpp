@@ -120,8 +120,8 @@ BaseRealSenseNode::BaseRealSenseNode(RosNodeBase& node,
     _is_accel_enabled(false),
     _is_gyro_enabled(false),
     _pointcloud(false),
-                                                               _is_polled(false),
-                                                               _frame_requested(false),
+    _is_polled(false),
+    _frame_requested(false),
     _imu_sync_method(imu_sync_method::NONE),
     _is_profile_changed(false),
     _is_align_depth_changed(false),
@@ -139,6 +139,9 @@ BaseRealSenseNode::BaseRealSenseNode(RosNodeBase& node,
 
     initializeFormatsMaps();
     _monitor_options = {RS2_OPTION_ASIC_TEMPERATURE, RS2_OPTION_PROJECTOR_TEMPERATURE};
+
+    _frame_request_trigger_srv = _node.create_service<std_srvs::srv::Trigger>("request_frame", std::bind(&BaseRealSenseNode::frame_request_trigger_callback, this,
+                std::placeholders::_1, std::placeholders::_2));
 }
 
 BaseRealSenseNode::~BaseRealSenseNode()
@@ -538,7 +541,6 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
             imu_msg.orientation.y = combined_motion_data.orientation.y;
             imu_msg.orientation.z = combined_motion_data.orientation.z;
             imu_msg.orientation.w = combined_motion_data.orientation.w;
-
         }
         else
         {
@@ -562,13 +564,10 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
         ROS_DEBUG("Publish %s stream", ros_stream_to_string(frame.get_profile().stream_type()).c_str());
     }
     publishMetadata(frame, t, OPTICAL_FRAME_ID(stream_index));
-
 }
-
 
 void BaseRealSenseNode::frame_callback(rs2::frame frame)
 {
-    //getParameters();
     if (!_is_polled || _frame_requested)
     {
         if (_synced_imu_publisher)
@@ -720,8 +719,20 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
         }
         if (_synced_imu_publisher)
             _synced_imu_publisher->Resume();
+
+        _frame_requested = false;
     }
 } // frame_callback
+
+void BaseRealSenseNode::frame_request_trigger_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+                                                       std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+    
+  ROS_DEBUG("received frame requesst");
+  _frame_requested = true;
+  response->success = true;
+  response->message = "Frame requested successfully!";
+}
 
 void BaseRealSenseNode::multiple_message_callback(rs2::frame frame, imu_sync_method sync_method)
 {
