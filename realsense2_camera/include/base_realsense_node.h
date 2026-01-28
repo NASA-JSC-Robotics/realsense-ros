@@ -28,6 +28,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <diagnostic_updater/publisher.hpp>
 #include <std_srvs/srv/empty.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include "realsense2_camera_msgs/msg/imu_info.hpp"
 #include "realsense2_camera_msgs/msg/extrinsics.hpp"
 #include "realsense2_camera_msgs/msg/metadata.hpp"
@@ -178,6 +179,7 @@ namespace realsense2_camera
         rclcpp::Service<realsense2_camera_msgs::srv::DeviceInfo>::SharedPtr _device_info_srv;
         rclcpp::Service<realsense2_camera_msgs::srv::CalibConfigRead>::SharedPtr _calib_config_read_srv;
         rclcpp::Service<realsense2_camera_msgs::srv::CalibConfigWrite>::SharedPtr _calib_config_write_srv;
+        rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _frame_request_trigger_srv;
         rclcpp_action::Server<TriggeredCalibration>::SharedPtr _triggered_calibration_action_server;
         
         std::shared_ptr<Parameters> _parameters;
@@ -322,6 +324,8 @@ namespace realsense2_camera
         void imu_callback_sync(rs2::frame frame, imu_sync_method sync_method=imu_sync_method::COPY);
         void multiple_message_callback(rs2::frame frame, imu_sync_method sync_method);
         void frame_callback(rs2::frame frame);
+        void frame_request_trigger_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                            std::shared_ptr<std_srvs::srv::Trigger::Response> response);
         
         void startDiagnosticsUpdater();
         void monitoringProfileChanges();
@@ -391,6 +395,10 @@ namespace realsense2_camera
         // false "clock reset" detections when frames from streams running at
         // different rates interleave out of order on the shared HW clock.
         std::map<int, double> _previous_frame_time;
+
+        
+
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr service_;
 
         rclcpp::Time _ros_time_base;
         bool _sync_frames;
