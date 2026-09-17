@@ -400,6 +400,8 @@ namespace realsense2_camera
         bool _is_accel_enabled;
         bool _is_gyro_enabled;
         bool _pointcloud;
+        bool _is_polled;
+        bool _frame_requested;
         imu_sync_method _imu_sync_method;
         std::deque<CimuData> _imu_history;
         std::mutex _imu_callback_mutex;
