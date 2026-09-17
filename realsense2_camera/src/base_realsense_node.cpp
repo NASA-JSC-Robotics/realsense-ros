@@ -558,15 +558,6 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
             _synced_imu_publisher->Pause();
         double frame_time = frame.get_timestamp();
 
-        // We compute a ROS timestamp which is based on an initial ROS time at point of first frame,
-        // and the incremental timestamp from the camera.
-        // In sync mode the timestamp is based on ROS time
-        bool placeholder_false(false);
-        if (_is_initialized_time_base.compare_exchange_strong(placeholder_false, true) )
-        {
-            _is_initialized_time_base = setBaseTime(frame_time, frame.get_frame_timestamp_domain());
-        }
-
         rclcpp::Time t(frameSystemTimeSec(frame));
         if (frame.is<rs2::frameset>())
         {
@@ -711,7 +702,7 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
 void BaseRealSenseNode::frame_request_trigger_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
-    
+
   ROS_DEBUG("received frame requesst");
   _frame_requested = true;
   response->success = true;

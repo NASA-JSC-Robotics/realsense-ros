@@ -50,7 +50,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 
-#if defined(HUMBLE) || defined(IRON) || defined(JAZZY) || defined(FOXY) 
+#if defined(HUMBLE) || defined(IRON) || defined(JAZZY) || defined(FOXY)
 #include <tf2/LinearMath/Quaternion.h>
 #else
 #include <tf2/LinearMath/Quaternion.hpp>
@@ -98,7 +98,7 @@ namespace realsense2_camera
 
     class PipelineSyncer : public rs2::asynchronous_syncer
     {
-    public: 
+    public:
         void operator()(rs2::frame f) const
         {
             invoke(std::move(f));
@@ -108,7 +108,7 @@ namespace realsense2_camera
     class SyncedImuPublisher
     {
         public:
-            SyncedImuPublisher(rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_publisher, 
+            SyncedImuPublisher(rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_publisher,
                                std::size_t waiting_list_size=1000);
             ~SyncedImuPublisher();
             void Pause();   // Pause sending messages. All messages from now on are saved in queue.
@@ -116,7 +116,7 @@ namespace realsense2_camera
             void Publish(sensor_msgs::msg::Imu msg);     //either send or hold message.
             size_t getNumSubscribers();
             void Enable(bool is_enabled) {_is_enabled=is_enabled;};
-        
+
         private:
             void PublishPendingMessages();
 
@@ -181,7 +181,7 @@ namespace realsense2_camera
         rclcpp::Service<realsense2_camera_msgs::srv::CalibConfigWrite>::SharedPtr _calib_config_write_srv;
         rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _frame_request_trigger_srv;
         rclcpp_action::Server<TriggeredCalibration>::SharedPtr _triggered_calibration_action_server;
-        
+
         std::shared_ptr<Parameters> _parameters;
         std::list<std::string> _parameters_names;
 
@@ -202,7 +202,7 @@ namespace realsense2_camera
         rclcpp_action::CancelResponse TriggeredCalibrationHandleCancel(const std::shared_ptr<GoalHandleTriggeredCalibration> goal_handle);
         void TriggeredCalibrationHandleAccepted(const std::shared_ptr<GoalHandleTriggeredCalibration> goal_handle);
         void TriggeredCalibrationExecute(const std::shared_ptr<GoalHandleTriggeredCalibration> goal_handle);
-  
+
         tf2::Quaternion rotationMatrixToQuaternion(const float rotation[9]) const;
         void append_static_tf_msg(const rclcpp::Time& t,
                                const float3& trans,
@@ -326,7 +326,7 @@ namespace realsense2_camera
         void frame_callback(rs2::frame frame);
         void frame_request_trigger_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                             std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-        
+
         void startDiagnosticsUpdater();
         void monitoringProfileChanges();
         void publish_temperature();
@@ -373,7 +373,7 @@ namespace realsense2_camera
         std::vector<geometry_msgs::msg::TransformStamped> _static_tf_msgs;
         std::shared_ptr<std::thread> _tf_t;
 
-        bool _use_intra_process;      
+        bool _use_intra_process;
         std::map<stream_index_pair, std::shared_ptr<image_publisher>> _image_publishers;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr _labeled_pointcloud_publisher;
         rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr _occupancy_publisher;
@@ -395,10 +395,6 @@ namespace realsense2_camera
         // false "clock reset" detections when frames from streams running at
         // different rates interleave out of order on the shared HW clock.
         std::map<int, double> _previous_frame_time;
-
-        
-
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr service_;
 
         rclcpp::Time _ros_time_base;
         bool _sync_frames;
