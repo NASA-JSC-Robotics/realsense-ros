@@ -98,6 +98,7 @@ configurable_parameters = [{'name': 'camera_name',                  'default': '
                            {'name': 'depth_mapping_camera.labeled_point_cloud_profile', 'default': '0,0,0', 'description': "'Label PointCloud stream profile'"},
                            {'name': 'enable_occupancy',             'default': 'false', 'description': "'enable occupancy stream'"},
                            {'name': 'depth_mapping_camera.occupancy_profile', 'default': '0,0,0', 'description': "'Occupancy stream profile'"},
+                           {'name': 'is_polled',                    'default': 'true', 'description': "'Whether or not the camera is polled'"},
                           ]
 
 def declare_configurable_parameters(parameters):
