@@ -141,7 +141,7 @@ BaseRealSenseNode::BaseRealSenseNode(RosNodeBase& node,
     initializeFormatsMaps();
     _monitor_options = {RS2_OPTION_ASIC_TEMPERATURE, RS2_OPTION_PROJECTOR_TEMPERATURE};
 
-    _frame_request_trigger_srv = _node.create_service<std_srvs::srv::Trigger>("request_frame", std::bind(&BaseRealSenseNode::frame_request_trigger_callback, this,
+    _frame_request_trigger_srv = _node.create_service<std_srvs::srv::Trigger>("~/request_images", std::bind(&BaseRealSenseNode::frame_request_trigger_callback, this,
                 std::placeholders::_1, std::placeholders::_2));
 }
 
